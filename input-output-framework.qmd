@@ -1,0 +1,39 @@
+---
+title: "Data Processing"
+format: html
+---
+
+# Introduction
+
+In this session, we develop input-output analysis frameworks for the mining sector of Brazil, Chile, Peru, and South Africa. During the first analysis phase, we run employment and value added multipliers for value-added and employment. Ultimately, our objective is to disaggregate the matrices regionally and to separate the information from a single company from the rest of the input-output matrix.
+
+## Preamble
+
+We first clean the workspace and call the appropriate libraries.
+
+```{r}
+#| warning: false
+#| message: false
+#| label: libraries
+
+# Clean workspace
+rm(list = ls())
+
+# Load libraries
+library(tidyverse)
+library(haven)
+library(readxl)
+library(openxlsx)
+```
+
+## Datasets
+
+We identify data files.
+
+```{r}
+#| warning: false
+#| message: false
+#| label: datasets-files
+
+xlsx-files <- c("data/PER/PER_IO_Framework.xlsx")
+```
