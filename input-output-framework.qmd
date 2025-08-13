@@ -35,5 +35,42 @@ We identify data files.
 #| message: false
 #| label: datasets-files
 
-xlsx-files <- c("data/PER/PER_IO_Framework.xlsx")
+xlsx_files <- c(
+    "data/PER/PER_IO_Framework.xlsx",
+    "data/CHL/CHI_MIP_2022_Short_Framework.xlsx")
+```
+
+
+# Models
+
+Z <- as.matrix(
+    read.xlsx(
+        xlsx_files[1],
+        sheet = "MIP_Basico_2007_Corrientes_101_",
+        rows= c(12:264),
+        cols = c(4:256),
+        skipEmptyRows = FALSE,
+        colNames = FALSE,
+        rowNames = FALSE))
+
+```{r}
+Z <- as.matrix(read_excel(
+    xlsx_files[1],
+    sheet = "MIP_Basico_2007_Corrientes_101_",
+    range = "N12:DJ112",
+    col_names = F,
+    col_types = "numeric",
+    trim_ws = F,
+))
+
+sectors <- read_excel(
+    xlsx_files[1],
+    sheet = "MIP_Basico_2007_Corrientes_101_",
+    range = "L12:M112",
+    col_names = F,
+    col_types = "text"
+)
+
+colnames(Z) <- as.vector(sectors$...1)
+rownames(Z) <- as.vector(sectors$...1)
 ```
