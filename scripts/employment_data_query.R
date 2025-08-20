@@ -3,6 +3,8 @@ library(tidyverse)
 library(haven)
 library(readxl)
 
+rm(list = ls())
+
 # South Africa
 # Datasets
 lookup_table_zaf <- read_excel(
@@ -24,11 +26,11 @@ test <- qlfs_2014_4 |>
 
 # With provinces
 
-test2 <- qlfs_2014_4 |> 
+employment_zaf <- qlfs_2014_4 |> 
   filter(! is.na(Q43INDUSTRY),
          ! Q43INDUSTRY %in% c(10,20,30)) |> 
   left_join(
-    lookup_table,
+    lookup_table_zaf,
     join_by(Q43INDUSTRY == `Industry Code`)
   ) |> 
   group_by(Province, as_factor(Province), `IO Code`, `IO Activity`) |> 
@@ -42,7 +44,12 @@ test2 <- qlfs_2014_4 |>
     names_sep = "_",
     names_sort = T,
     values_fill = 0
+  ) |> 
+  rename(
+    region_code = Province,
+    region_name = `as_factor(Province)`
   )
+
 
 # write.table(test2, file = pipe("xclip -selection clipboard"), sep = "\t", row.names = FALSE)
 
@@ -78,8 +85,78 @@ employment_chl <- read_excel(
     names_sep = "_",
     names_sort = T,
     values_fill = 0
+  ) |> 
+  rename(
+    region_name = `Región`
   )
 
 # write.table(employment_chl, file = pipe("xclip -selection clipboard"), sep = "\t", row.names = FALSE)
 
 
+# Perú
+
+# Datasets
+
+epen2024 <- read_sav("data/PER/EPEN 2022 BD_Publicación Dpto.SAV")
+
+# for_equivalence <- epen2024 |> 
+#   filter(
+#     ! is.na(C310)
+#   ) |> 
+#   group_by(C309_COD, as_factor(C309_COD) ) |> 
+#   summarize(
+#     total = sum(FAC300_ANUAL)
+#   ) |> 
+#   ungroup()
+
+equivalence <- read_excel(
+  "data/PER/PER_epem_equivalence.xlsx",
+  col_types = c("numeric","text", "text", "text")
+)
+
+# write.table(for_equivalence, file = pipe("xclip -selection clipboard"), sep = "\t", row.names = FALSE)
+
+employment_per <- epen2024 |>
+  left_join(
+    equivalence,
+    join_by(C309_COD)
+  ) |> 
+  filter(
+    C310 %in% c(1:7),
+    ! is.na(C310),
+    ! C309_COD %in% c("9700", "9900")
+  ) |> 
+  group_by(CCDD, as_factor(CCDD), io_code, io_name ) |> 
+  summarize(
+    total = sum(FAC300_ANUAL)
+  ) |> 
+  ungroup() |> 
+  pivot_wider(
+    id_cols = c(CCDD, `as_factor(CCDD)`),
+    names_from = c(io_code, io_name),
+    values_from = total,
+    names_sep = "_",
+    names_sort = T,
+    values_fill = 0
+  ) |> 
+  rename(
+    region_code = CCDD,
+    region_name = `as_factor(CCDD)`
+  )
+  
+# write.table(employment_per, file = pipe("xclip -selection clipboard"), sep = "\t", row.names = FALSE)
+
+saveRDS(
+  employment_chl,
+  file = "outputs/CHL/employment_chl.RDS"
+)
+
+saveRDS(
+  employment_per,
+  file = "outputs/PER/employment_per.RDS"
+)
+
+saveRDS(
+  employment_zaf,
+  file = "outputs/ZAF/employment_zaf.RDS"
+)

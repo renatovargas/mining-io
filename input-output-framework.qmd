@@ -35,23 +35,23 @@ We identify data files.
 #| message: false
 #| label: datasets-files
 
-xlsx_files <- c(
+io_files <- c(
+    "data/BRA/BRA_WIOT2014.xlsx",
+    "data/CHL/CHI_MIP_2022_Short_Framework.xlsx",
     "data/PER/PER_IO_Framework.xlsx",
-    "data/CHL/CHI_MIP_2022_Short_Framework.xlsx")
+    "data/ZAF/Final_Input_Output_tables_for_South_Africa_2014.xlsx"
+    )
+
+io_sheet <- c(
+    "IOT", # BRA
+    ""
+
+)
 ```
 
 
 # Models
 
-Z <- as.matrix(
-    read.xlsx(
-        xlsx_files[1],
-        sheet = "MIP_Basico_2007_Corrientes_101_",
-        rows= c(12:264),
-        cols = c(4:256),
-        skipEmptyRows = FALSE,
-        colNames = FALSE,
-        rowNames = FALSE))
 
 ```{r}
 Z <- as.matrix(read_excel(
