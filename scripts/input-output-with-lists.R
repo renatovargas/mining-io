@@ -1,9 +1,11 @@
-library(tidyverse)
+# ============ Setup ============
 library(readxl)
+library(openxlsx)  
+library(haven)
 
 rm(list = ls())
 
-# Files, sheets, ranges
+# ---- Inputs: files, sheets, ranges ----
 io_files <- c(
   "data/CHL/CHI_MIP_2022_Short_Framework.xlsx",
   "data/PER/PER_IO_Framework.xlsx",
@@ -12,107 +14,150 @@ io_files <- c(
 io_sheets <- c("1", "MIP_Basico_2007_Corrientes_101_", "Input - output table, 2014")
 z_ranges  <- c("D12:O23", "N12:DJ112", "C4:AZ53")
 fd_ranges <- c("Q12:V23", "DN12:DT112", "BB4:BG53")
-
 iso3 <- tolower(c("CHL","PER","ZAF"))
 
-## Regional employment
-employment_chl <- readRDS(file = "outputs/CHL/employment_chl.RDS")
-employment_per <- readRDS(file = "outputs/PER/employment_per.RDS")
-employment_zaf <- readRDS(file = "outputs/ZAF/employment_zaf.RDS")
+# ---- Employment inputs (region_code, region_name, then sector cols) ----
+employment_chl <- readRDS("outputs/CHL/employment_chl.RDS")
+employment_per <- readRDS("outputs/PER/employment_per.RDS")
+employment_zaf <- readRDS("outputs/ZAF/employment_zaf.RDS")
 
-# Preallocate named lists
-Z          <- setNames(vector("list", length(iso3)), iso3)
-FD         <- setNames(vector("list", length(iso3)), iso3)
-x          <- setNames(vector("list", length(iso3)), iso3)
-f          <- setNames(vector("list", length(iso3)), iso3)
-x_hat      <- setNames(vector("list", length(iso3)), iso3)
-x_hat_inv  <- setNames(vector("list", length(iso3)), iso3)
-A          <- setNames(vector("list", length(iso3)), iso3)
-I_mat      <- setNames(vector("list", length(iso3)), iso3)
-IminusA    <- setNames(vector("list", length(iso3)), iso3)
-L          <- setNames(vector("list", length(iso3)), iso3)
+Emp <- list(chl = employment_chl, per = employment_per, zaf = employment_zaf)
 
+# ---- Containers ----
+Z  <- setNames(vector("list", length(iso3)), iso3)
+FD <- setNames(vector("list", length(iso3)), iso3)
+f  <- setNames(vector("list", length(iso3)), iso3)
+
+# ---- Read national Z and FD; compute f ----
 for (i in seq_along(io_files)) {
   cc <- iso3[i]
-
-  # Read matrices
-  Z[[cc]] <- as.matrix(read_excel(io_files[i], sheet = io_sheets[i],
-                                  range = z_ranges[i], col_names = FALSE))
-  FD[[cc]] <- as.matrix(read_excel(io_files[i], sheet = io_sheets[i],
-                                   range = fd_ranges[i], col_names = FALSE))
-
-  # Core IO pieces
-  x[[cc]]         <- rowSums(Z[[cc]],  na.rm = TRUE) + rowSums(FD[[cc]], na.rm = TRUE)
-  f[[cc]]         <- rowSums(FD[[cc]], na.rm = TRUE)
-  x_hat[[cc]]     <- diag(x[[cc]])
-  x_hat_inv[[cc]] <- solve(x_hat[[cc]])
-  A[[cc]]         <- Z[[cc]] %*% x_hat_inv[[cc]]
-  I_mat[[cc]]     <- diag(nrow(A[[cc]]))
-  IminusA[[cc]]   <- I_mat[[cc]] - A[[cc]]
-  L[[cc]]         <- solve(IminusA[[cc]])
+  Z[[cc]]  <- as.matrix(read_excel(io_files[i], sheet = io_sheets[i], range = z_ranges[i], col_names = FALSE))
+  FD[[cc]] <- as.matrix(read_excel(io_files[i], sheet = io_sheets[i], range = fd_ranges[i], col_names = FALSE))
+  f[[cc]]  <- rowSums(FD[[cc]], na.rm = TRUE)
 }
 
-# Example access:
-# L[["chl"]], x[["per"]], A[["zaf"]]
-
-## Assume you already have lists: Z, FD, iso3 (from the refactor)
-## And these employment data frames already loaded:
-## employment_chl, employment_per, employment_zaf
-## Each has: region_code, region_name, then sector columns that match Z’s sector order
-
-Emp <- list(
-  chl = employment_chl,
-  per = employment_per,
-  zaf = employment_zaf
-)
-
-# Helper to ensure sector column order in Emp matches Z row order
-# If your Z matrices don’t have rownames yet, set them once here using the employment column names.
+# ---- Name alignment: use employment sector names as canonical order ----
 for (cc in names(Z)) {
-  if (is.null(rownames(Z[[cc]]))) {
-    # Take sector names from employment df (excluding first 2 columns)
-    sec_names <- names(Emp[[cc]])[-(1:2)]
-    stopifnot(nrow(Z[[cc]]) == length(sec_names))  # sanity check
-    rownames(Z[[cc]]) <- sec_names
-    colnames(Z[[cc]]) <- sec_names
-    rownames(FD[[cc]]) <- sec_names
-    # FD can be multiple components in columns; we leave its column names as-is
+  sec_names <- names(Emp[[cc]])[-(1:2)]
+  stopifnot(nrow(Z[[cc]]) == length(sec_names),
+            ncol(Z[[cc]]) == length(sec_names),
+            nrow(FD[[cc]]) == length(sec_names))
+  rownames(Z[[cc]])  <- sec_names
+  colnames(Z[[cc]])  <- sec_names
+  rownames(FD[[cc]]) <- sec_names
+  names(f[[cc]])     <- sec_names
+}
+
+# ---- Helpers ----
+as_df <- function(M, first_col = "name") {
+  if (is.null(dim(M))) {
+    rn <- names(M); if (is.null(rn)) rn <- seq_along(M)
+    out <- data.frame(rowname = rn, value = as.numeric(M), check.names = FALSE, row.names = NULL)
+    names(out)[1] <- first_col
+    out
+  } else {
+    rn <- rownames(M); if (is.null(rn)) rn <- seq_len(nrow(M))
+    out <- data.frame(rowname = rn, M, check.names = FALSE, row.names = NULL)
+    names(out)[1] <- first_col
+    out
   }
 }
 
-build_Z_mrio <- function(Z_cc, Emp_cc) {
-  # 1) Align sector names and get dimensions
-  sec_names <- rownames(Z_cc)         # length n
-  stopifnot(!is.null(sec_names), ncol(Z_cc) == length(sec_names))
-  Emp_mat <- as.matrix(Emp_cc[, -(1:2)])
-  Emp_mat <- Emp_mat[, sec_names, drop = FALSE]
-  R <- nrow(Emp_mat); n <- length(sec_names)
+build_Zf_mrio <- function(Z_cc, f_cc, Emp_cc) {
   rcodes <- Emp_cc$region_code
+  if (inherits(rcodes, "haven_labelled")) rcodes <- as.character(as_factor(rcodes))
+  if (!is.character(rcodes)) rcodes <- as.character(rcodes)
 
-  # 2) Regional production shares by sector: w[r,s] = emp[r,s] / sum_r emp[r,s]
+  sec_df <- Emp_cc[, -(1:2), drop = FALSE]
+  for (j in seq_along(sec_df)) {
+    x <- sec_df[[j]]
+    if (inherits(x, "haven_labelled")) x <- as.numeric(x)
+    sec_df[[j]] <- as.numeric(x)
+  }
+
+  sec_names <- rownames(Z_cc)
+  stopifnot(!is.null(sec_names), ncol(Z_cc) == length(sec_names), length(f_cc) == length(sec_names))
+
+  Emp_mat <- as.matrix(sec_df)
+  Emp_mat <- Emp_mat[, sec_names, drop = FALSE]
+
+  R <- nrow(Emp_mat); n <- length(sec_names)
   sec_tot <- colSums(Emp_mat, na.rm = TRUE)
   share   <- sweep(Emp_mat, 2, ifelse(sec_tot == 0, 1, sec_tot), "/")
-  share[, sec_tot == 0] <- 0  # guard zero sectors
+  share[, sec_tot == 0] <- 0
 
-  # 3) Stack W_r diagonals into a tall operator: W_stack = rbind_r diag(share[r,])
   W_list  <- lapply(seq_len(R), function(r) diag(as.numeric(share[r, ]), nrow = n, ncol = n))
-  W_stack <- do.call(rbind, W_list)  # (R*n x n)
+  W_stack <- do.call(rbind, W_list)                                  # (R*n x n)
 
-  # 4) Replicate buyer columns for every destination region:
-  #     K = (1_R^T ⊗ I_n)  -> (n x R*n)
-  K <- kronecker(matrix(1, nrow = 1, ncol = R), diag(n))
+  # Column allocator weighted by the same shares for each sector k
+  K_shares <- matrix(0, nrow = n, ncol = R * n)
+  for (k in seq_len(n)) {
+    cols_k <- (seq_len(R) - 1L) * n + k
+    K_shares[k, cols_k] <- share[, k]
+  }
 
-  # 5) Build MRIO: Z_mrio = W_stack %*% Z_cc %*% K   -> (R*n x R*n)
-  Z_mrio <- W_stack %*% Z_cc %*% K
+  Z_mrio <- W_stack %*% Z_cc %*% K_shares                           # (R*n x R*n)
+  f_mrio <- W_stack %*% matrix(f_cc, ncol = 1)                      # (R*n x 1)
 
-  # 6) Nice row/col names: "RCODE|SECTOR"
-  rownames(Z_mrio) <- as.vector(t(outer(rcodes, sec_names, paste, sep = "|")))
-  colnames(Z_mrio) <- rownames(Z_mrio)
+  rs_names <- as.vector(t(outer(rcodes, sec_names, paste, sep = "|")))
+  rownames(Z_mrio) <- rs_names
+  colnames(Z_mrio) <- rs_names
+  rownames(f_mrio) <- rs_names
+  colnames(f_mrio) <- "f"
 
-  Z_mrio
+  list(Z_mrio = Z_mrio, f_mrio = f_mrio, Emp_mat = Emp_mat)
 }
 
+compute_L_mrio <- function(Z_mrio, f_mrio) {
+  x <- rowSums(Z_mrio, na.rm = TRUE) + as.numeric(f_mrio[, 1])
+  x_inv <- diag(ifelse(x == 0, 0, 1 / x), nrow = length(x))
+  dimnames(x_inv) <- list(colnames(Z_mrio), colnames(Z_mrio))
+  A <- Z_mrio %*% x_inv
+  dimnames(A) <- list(rownames(Z_mrio), colnames(Z_mrio))
+  I <- diag(nrow(A)); dimnames(I) <- list(rownames(A), colnames(A))
+  L <- tryCatch(solve(I - A),
+                error = function(e) {
+                  M <- matrix(NA_real_, nrow(A), ncol(A))
+                  dimnames(M) <- list(rownames(A), colnames(A))
+                  M
+                })
+  list(L = L, x = x)
+}
 
-# Example for Chile:
-Z_mrio_chl <- build_Z_mrio(Z[["chl"]], employment_chl)
-dim(Z_mrio_chl)  # 192 192
+# ---- Build MRIO, employment coefficients, and write Excel with What-If ----
+for (cc in names(Z)) {
+  mr   <- build_Zf_mrio(Z[[cc]], f[[cc]], Emp[[cc]])
+  Zc   <- mr$Z_mrio
+  fc   <- mr$f_mrio
+  outL <- compute_L_mrio(Zc, fc)
+
+  Lc <- outL$L
+  xc <- outL$x
+
+  # Employment coefficients e = E_rs / x_rs
+  # Flatten Emp_mat to region-major, sector-minor to align with row order in MRIO
+  E_rs <- as.numeric(t(mr$Emp_mat))
+  names(E_rs) <- rownames(Zc)
+  e_coeff <- ifelse(xc == 0, 0, E_rs / xc)
+  names(e_coeff) <- rownames(Zc)
+
+  # Workbook
+  wb <- createWorkbook()
+
+  addWorksheet(wb, "Z_mrio"); writeData(wb, "Z_mrio", as_df(Zc, "region|sector"))
+  addWorksheet(wb, "f_mrio"); writeData(wb, "f_mrio", as_df(fc, "region|sector"))
+  addWorksheet(wb, "L_mrio"); writeData(wb, "L_mrio", as_df(Lc, "region|sector"))
+  addWorksheet(wb, "Emp_coeff"); writeData(wb, "Emp_coeff", as_df(e_coeff, "region|sector"))
+
+  # Calibration 
+  old_x  <- rowSums(Zc, na.rm = TRUE) + as.numeric(fc[,1])
+  new_x  <- as.numeric(Lc %*% fc)
+  resid  <- new_x - old_x
+  relerr <- ifelse(old_x == 0, NA_real_, resid / old_x)
+  addWorksheet(wb, "Calibration")
+  writeData(wb, "Calibration",
+            data.frame(`region|sector` = rownames(Zc),
+                       old_x = old_x, new_x = new_x, resid = resid, rel_error = relerr,
+                       check.names = FALSE))
+
+  
