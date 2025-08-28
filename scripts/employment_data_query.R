@@ -114,7 +114,8 @@ equivalence <- read_excel(
   col_types = c("numeric","text", "text", "text")
 )
 
-# write.table(for_equivalence, file = pipe("xclip -selection clipboard"), sep = "\t", row.names = FALSE)
+# write.table(equivalence, file = pipe("xclip -selection clipboard"), sep = "\t", row.names = FALSE)
+
 
 employment_per <- epen2024 |>
   left_join(
@@ -145,6 +146,7 @@ employment_per <- epen2024 |>
   )
   
 # write.table(employment_per, file = pipe("xclip -selection clipboard"), sep = "\t", row.names = FALSE)
+# write.table(employment_zaf, "clipboard-128", sep = "\t", row.names = FALSE, col.names = TRUE)
 
 saveRDS(
   employment_chl,
