@@ -55,7 +55,7 @@ io_sheet <- c(
 
 ```{r}
 Z <- as.matrix(read_excel(
-    xlsx_files[1],
+    io_files[1],
     sheet = "MIP_Basico_2007_Corrientes_101_",
     range = "N12:DJ112",
     col_names = F,
@@ -64,7 +64,7 @@ Z <- as.matrix(read_excel(
 ))
 
 sectors <- read_excel(
-    xlsx_files[1],
+    io_files[1],
     sheet = "MIP_Basico_2007_Corrientes_101_",
     range = "L12:M112",
     col_names = F,
